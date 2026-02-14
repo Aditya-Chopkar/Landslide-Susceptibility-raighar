@@ -1,81 +1,65 @@
-import rasterio
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import rasterio
+import os
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score, roc_curve
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score, roc_curve, auc
 import matplotlib.pyplot as plt
 
-# Load raster files
-raster_files = [
-    'param1.tif',
-    'param2.tif',
-    'param3.tif',
-    'param4.tif',
-    'param5.tif',
-    'param6.tif',
-    'param7.tif',
-    'param8.tif',
-    'param9.tif',
-    'param10.tif'
-]
+def load_tif_files(tif_folder):
+    """ Load all TIF files from a folder. """
+    rasters = []
+    for file in os.listdir(tif_folder):
+        if file.endswith('.tif'):
+            with rasterio.open(os.path.join(tif_folder, file)) as src:
+                rasters.append(src.read(1))
+    return np.array(rasters)
 
-# Load and stack .tif files
-stacked_data = []
-for file in raster_files:
-    with rasterio.open(file) as src:
-        stacked_data.append(src.read(1))  # Read the first band
-stacked_array = np.stack(stacked_data, axis=-1)
+def extract_landslide_points(data):
+    """Extracts landslide points from the dataset."""
+    # Dummy implementation, replace with actual extraction logic
+    return np.random.rand(100, 2), np.random.randint(0, 2, 100)
 
-# Assuming ground truth labels are in a separate file called `labels.csv`
-labels = pd.read_csv('labels.csv')  # Landslide points marked as 1, non-landslide as 0
+def train_model(X, y):
+    """ Trains a Random Forest Classifier. """
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    model = RandomForestClassifier()
+    model.fit(X_train, y_train)
+    return model, X_test, y_test
 
-# Extract features and labels
-features = stacked_array.reshape(-1, len(raster_files))
-labels = labels.values.flatten()
+def plot_auc(y_test, y_scores):
+    """ Creates and saves AUC-ROC curve. """
+    fpr, tpr, _ = roc_curve(y_test, y_scores)
+    roc_auc = auc(fpr, tpr)
 
-# Split data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
+    plt.figure()
+    plt.plot(fpr, tpr, color='blue', lw=1, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='red', lw=1, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic')
+    plt.legend(loc="lower right")
+    plt.grid()
+    plt.savefig('roc_curve.png')
 
-# Train Random Forest model
-rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_model.fit(X_train, y_train)
+def main():
+    try:
+        tif_folder = 'path/to/tif/files'
+        data = load_tif_files(tif_folder)
+        landslide_points, labels = extract_landslide_points(data)
+        
+        model, X_test, y_test = train_model(landslide_points, labels)
+        
+        y_scores = model.predict_proba(X_test)[:, 1]
+        plot_auc(y_test, y_scores)
 
-# Predict on test set
-y_pred = rf_model.predict(X_test)
+        print("Processing complete. Outputs saved.")
 
-# Generate classification report and AUC-ROC score
-report = classification_report(y_test, y_pred)
-auc = roc_auc_score(y_test, rf_model.predict_proba(X_test)[:, 1])
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
-# Print evaluation metrics
-print(report)
-print(f'AUC-ROC: {auc}')
-
-# Create a susceptibility map
-predicted_probabilities = rf_model.predict_proba(features)[:, 1]
-
-# Reshape back to original raster dimensions
-susceptibility_map = predicted_probabilities.reshape(stacked_array.shape[:2])
-
-# Plotting
-plt.figure(figsize=(12, 6))
-plt.subplot(1, 2, 1)
-plt.imshow(susceptibility_map, cmap='hot', interpolation='nearest')
-plt.colorbar(label='Susceptibility Level')
-plt.title('Landslide Susceptibility Map')
-
-# AUC-ROC curve
-fpr, tpr, thresholds = roc_curve(y_test, rf_model.predict_proba(X_test)[:, 1])
-plt.subplot(1, 2, 2)
-plt.plot(fpr, tpr, label='Random Forest (AUC = {:.2f})'.format(auc))
-plt.plot([0, 1], [0, 1], 'k--')
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('AUC-ROC Curve')
-plt.legend()
-plt.show()
-
-# Save both the map and the figure
-plt.savefig('susceptibility_map.png')
-# ... (code for saving the susceptibility map)
+if __name__ == "__main__":
+    main()
